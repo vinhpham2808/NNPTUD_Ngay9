@@ -16,26 +16,27 @@ router.get("/", async function (req, res, next) {
       .sort({ createdAt: -1 })
       .populate("from", "username fullName avatarUrl")
       .populate("to", "username fullName avatarUrl");
-    let groupedByUser = {};
-    messages.forEach(msg => {
-      let userId = msg.from._id.toString() === currentUserId.toString() 
-        ? msg.to._id.toString() 
-        : msg.from._id.toString();
-      if (!groupedByUser[userId]) {
-        groupedByUser[userId] = {
+    let result = [];
+
+    messages.forEach((msg) => {
+      let isCurrentUserSender = msg.from._id.toString() === currentUserId.toString();
+      let userInfo = isCurrentUserSender ? msg.to : msg.from;
+      let existed = result.some(
+        (item) => item.userInfo._id.toString() === userInfo._id.toString()
+      );
+
+      if (!existed) {
+        result.push({
           _id: msg._id,
           from: msg.from,
           to: msg.to,
           messageContent: msg.messageContent,
           createdAt: msg.createdAt,
-          userInfo: msg.from._id.toString() === currentUserId.toString() 
-            ? msg.to 
-            : msg.from
-        };
+          userInfo: userInfo,
+        });
       }
     });
-    let result = Object.values(groupedByUser)
-      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
     res.send(result);
   } catch (error) {
     res.status(500).send({ message: error.message });
