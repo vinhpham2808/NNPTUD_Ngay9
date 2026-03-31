@@ -8,60 +8,34 @@ let mongoose = require("mongoose");
 router.use(CheckLogin);
 router.get("/", async function (req, res, next) {
   try {
-    let currentUserId = new mongoose.Types.ObjectId(req.user._id);
-
-    let result = await messageModel.aggregate([
-      {
-        $match: {
-          $or: [{ from: currentUserId }, { to: currentUserId }],
-        },
-      },
-      {
-        $sort: { createdAt: -1 },
-      },
-      {
-        $group: {
-          _id: {
-            $cond: {
-              if: { $eq: ["$from", currentUserId] },
-              then: "$to",
-              else: "$from",
-            },
-          },
-          lastMessage: { $first: "$$ROOT" },
-        },
-      },
-      {
-        $lookup: {
-          from: "users",
-          localField: "_id",
-          foreignField: "_id",
-          as: "userInfo",
-        },
-      },
-      {
-        $unwind: "$userInfo",
-      },
-      {
-        $project: {
-          _id: "$lastMessage._id",
-          from: "$lastMessage.from",
-          to: "$lastMessage.to",
-          messageContent: "$lastMessage.messageContent",
-          createdAt: "$lastMessage.createdAt",
-          userInfo: {
-            _id: "$userInfo._id",
-            username: "$userInfo.username",
-            fullName: "$userInfo.fullName",
-            avatarUrl: "$userInfo.avatarUrl",
-          },
-        },
-      },
-      {
-        $sort: { createdAt: -1 },
-      },
-    ]);
-
+    let currentUserId = req.user._id;
+    let messages = await messageModel
+      .find({
+        $or: [{ from: currentUserId }, { to: currentUserId }]
+      })
+      .sort({ createdAt: -1 })
+      .populate("from", "username fullName avatarUrl")
+      .populate("to", "username fullName avatarUrl");
+    let groupedByUser = {};
+    messages.forEach(msg => {
+      let userId = msg.from._id.toString() === currentUserId.toString() 
+        ? msg.to._id.toString() 
+        : msg.from._id.toString();
+      if (!groupedByUser[userId]) {
+        groupedByUser[userId] = {
+          _id: msg._id,
+          from: msg.from,
+          to: msg.to,
+          messageContent: msg.messageContent,
+          createdAt: msg.createdAt,
+          userInfo: msg.from._id.toString() === currentUserId.toString() 
+            ? msg.to 
+            : msg.from
+        };
+      }
+    });
+    let result = Object.values(groupedByUser)
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
     res.send(result);
   } catch (error) {
     res.status(500).send({ message: error.message });
